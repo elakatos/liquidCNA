@@ -1,6 +1,8 @@
 # LiquidCNA
 This repository contains R functions implementing liquidCNA, a method for tracking emergent subclone dynamics in CNA data from longitudinal (liquid) biopsies. LiquidCNA leverages copy number data of many genomic segments tracked in multiple (cell-free DNA) biopsies over time accessible via low-cost shallow whole genome sequencing. The algorithm analysis the ensemble of segments and samples to derive an estimate of (i) the fraction of tumour-originating DNA (termed purity) of each sample; (ii) the fraction of tumour DNA originating from an emerging and potentially resistant subclone (termed subclonal-ratio) in each sampling time-point.
 
+For further details on the method, please see [our preprint (Lakatos et al., 2021) on bioRxiv](https://www.biorxiv.org/content/10.1101/2021.01.05.425414v1).
+
 ![Copy number measurements of a mixed tumour/normal population and estimation in liquidCNA](Figure_illustration.png)
 
 ## Contents and requirements
