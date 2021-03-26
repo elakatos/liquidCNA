@@ -87,7 +87,7 @@ filterSegmentRatios <- function(segs, cutOff, method, base=1){
     if (method=='sd'){
         # compute the standard deviation of each segment, and return the ones that are varied enough
         rat.sd <- apply(segsExtended,1,sd)
-        return(segs[(rat.sd > cutOff),])
+        return(segs[(rat.sd > cutOff),,drop=F])
     }
 }
 
@@ -119,6 +119,12 @@ findBestOrder <- function(seg.ratios.Eval, ordVec, threshold, nCol, base=1){
                    max=NA,
                    ord=NA,
                    segs=list(NULL)))
+    }
+    if (nCol<2){
+        return(list(cons=row.names(seg.ratios.Eval),
+                   max=1,
+                   ord=ordVec[1,,drop=F],
+                   segs=list(row.names(seg.ratios.Eval))))
     }
     fitTotal <- c()
     fitSegments <- list()
