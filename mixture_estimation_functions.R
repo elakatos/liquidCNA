@@ -149,13 +149,38 @@ findBestOrder <- function(seg.ratios.Eval, ordVec, threshold, nCol, base=1){
 # - minNum = minimum number of subclonal (monotone) segments required to be returned
 # Returns: cutoff value meeting requirement and maximising the fit
 getCutOffAuto <- function(fitInfo.df, minNum){
-x <- subset(fitInfo.df, segsInOrder > minNum)
-if(nrow(x)>0){
-    c <- x$cutOff[which.max(x$maxFit)]
-}else{
-    c <- fitInfo.df$cutOff[which.max(fitInfo.df$maxFit)]
+    x <- subset(fitInfo.df, segsInOrder > minNum)
+    if(nrow(x)>0){
+        c <- x$cutOff[which.max(x$maxFit)]
+        }else{
+            c <- fitInfo.df$cutOff[which.max(fitInfo.df$maxFit)]
+    }
+    return(c)
 }
-return(c)
+
+# Bootstrap the estimate of r by subsampling subclonal segments and carrying out estimates on this subset
+# Important for n=2 case where unstable segments cannot be identified
+# Input:
+# - seg.rel = DeltaCN values to be used
+# - fit = the fit for a given cutoff value, containing all non-clonal segments and subclonal ordered segments (same for n=2)
+# Returns: cutoff value meeting requirement and maximising the fit
+bootstrapSegmentsAndEstimateR <- function(seg.rel, fit, iterNum=25){
+    ordInd <- 1 # only a single ordering is possible in n=2 case
+    ratVec <- c()
+    for ( i in 1:iterNum){
+      seg.selected <- sample(fit$segs[[ordInd]], round(length(fit$segs[[ordInd]])*0.75))
+      seg.rel.toUse <- seg.rel[seg.selected,fit$ord[ordInd,], drop=F]
+      topSample <- names(seg.rel.toUse)[1]
+      final.medians <- data.frame(time=topSample,rat=NA, rat_sd=NA)
+      tryCatch(
+        for (topSample in final.medians$time){
+          final.medians <- estimateRGaussianFit(seg.rel.toUse, topSample, final.medians)
+          },
+          error=function(e){print('Error in Gaussian fitting, continuing.')}
+          )
+      ratVec <- c(ratVec, final.medians$rat)
+  }
+  return(ratVec)
 }
 
 # Estimate (subclonal) ratio using the level of CNA as compared to a selected "high" sample
@@ -179,10 +204,6 @@ estimateRSegmentRatio <- function(seg.ratios, toEstimate, topSamples, w){
     return(final.ratios)
 }
 
-###########################################################################
-############## FUNCTIONS FOR SYNTHETIC DATASETS ###########################
-###########################################################################
-
 # Estimate the resistant ratio of a sample by fitting a Gaussian mixture to relative subclonal segment CNs
 # Input:
 # - seg.rel.toUse = normalised, purity-corrected segment CN of subclonal segments only
@@ -201,7 +222,11 @@ estimateRGaussianFit <- function(seg.rel.toUse, topSample, final.medians, nState
       start <- -0.4
   }
   # By default the following DCN values are used: -2, -1, 1, 2, 3
-  mixfit <- normalmixEM(as.numeric(seg.top),lambda=0.5,mean.constr = c("-2a","a","-a","-2a","-3a"), mu=c(2,1,-1,-2,-3)*start,sigma=0.1)
+  mixfit <- normalmixEM(as.numeric(seg.top),
+                        lambda=0.2,
+                        mean.constr = c("2a","a","-a","-2a","-3a"),
+                        mu=c(2,1,-1,-2,-3)*start,sigma=0.1)
+  #print(mixfit$mu)
   # only return the obtained value if converged in less than 800 iterations
   if (length(mixfit$all.loglik)<800){
       final.medians$rat[final.medians$time==topSample] <- -1*(mixfit$mu[2])
@@ -210,6 +235,10 @@ estimateRGaussianFit <- function(seg.rel.toUse, topSample, final.medians, nState
   }
   return(final.medians)
 }
+
+###########################################################################
+############## FUNCTIONS FOR SYNTHETIC DATASETS ###########################
+###########################################################################
 
 # Generate synthetic CN measurements
 # Input:
@@ -281,12 +310,12 @@ getPurSynthetic <- function(seg.df, params.df, simInd){
 getOrderSynthetic <- function(seg.rel.nonBase){
     colToUse <- names(seg.rel.nonBase)[1:ncol(seg.rel.nonBase)]
     nCol <- length(colToUse)
-    seg.rel.toOrder <- seg.rel.nonBase[,colToUse]
+    seg.rel.toOrder <- seg.rel.nonBase[,colToUse,drop=F]
     ordVec <- permutations(nCol,nCol,colToUse)
 
     # set the method by default to sd and epsilon to 0.05, as optimal for synthetic data
     filterMethod <- 'sd'
-    cutOffVec <- seq(0.1,0.35,by=0.005)
+    cutOffVec <- seq(0.05,0.35,by=0.005)
     epsilon <- 0.05
 
     # for each cutoff value, evaluate clonal/subclonal/unstable segments and best order
