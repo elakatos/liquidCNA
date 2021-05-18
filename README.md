@@ -17,7 +17,13 @@ The files in the repository are organised as follows:
 - **LiquidCNA_Example** contains a detailed working example, using a synthetically generated dataset found in the **Example** sub-directory.
 
 - **purity_estimate_synthetic** and **ratio_estimate_synthetic** contain scripts automatically generating synthetic longitudinal CNA datasets (of 5 sampling time-points and 80 genomic segments) with varying levels of measurements noise. For each dataset, the scripts then run liquidCNA to estimate the purity and subclonal-ratio of samples, respectively; and results are recorded together with true values.
+**ratio_estimate_synthetic_samplenumber** is an extension of the ratio_estimate_synthetic script that implements random sampling of the number of longitudinal samples, then generates and analyses/estimates the thus sampled dataset. It also executes a bootstrapping solution for providing special care in the n=2 case (only 1 non-baseline time-point sample) which has higher uncertainty.
 
 - **purity_estimate_insilico** contains the script to automatically derive purity estimates for a sample set of 120 in silico cell line mixtures (obtained by sampling and mixing sequencing reads from two high-grade serous ovarian cancer cell lines and normal blood).
 
 - **all_estimate_insilico** automatically generates in silico datasets by randomly sampling samples from the 120 in silico cell line mixtures, including samples according to the minimum required read count (30 samples with >50M reads, 60 samples with >20M reads, etc.). Then the subclona-ratio estimate is computed for each sample, with purity values obtained from the estimates computed by _purity_estimate_insilico_. Results of samples purity (tumour fraction), relative and absolute subclonal-ratio are recorded together with true theoretical mixing proportions.
+
+## Updates
+**May 2021**
+
+Special cases and functions added for the n=2 (single non-baseline sample) case. This includes (1) updated estimation functions so dataframe operations do not throw errors and (2) a special bootstrapping function that allows random subsampling of subclonal samples prior to subclonal ratio estimation - to rectify that in n=2 unstable and subclonal segments are indistinguishable.
