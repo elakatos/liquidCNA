@@ -4,7 +4,7 @@ source('mixture_estimation_functions.R')
 pRandom <- 0.1
 
 # Initialise final table to store results and lists to store intermediate information
-ratHat.total <- data.frame(matrix(vector(),ncol=15))
+ratHat.total <- data.frame(matrix(vector(),ncol=13))
 fitInfoList <- list()
 segRelList <- list()
 
@@ -76,37 +76,26 @@ for (noiseLevel in c(0.5, 1, 2, 4)){
     #fitInfoList[[paste0(noiseLevel,':',simInd)]] <- fitInfo # save intermediate value for later checking if needed
     fitInfo.df <- fitsAll[[2]]
 
+    # Identify optimal cutoff for clonal segments and compute relative resistant ratios
+    # from the corresponding order and subclonal segments 
+    # Number of non-clonal segments to be retained: >=12 ; only proceed if a minimum of 5 subclonal segments are found
+    segAim <- 12
+    co <- getCutOffAuto(fitInfo.df, segAim)
+    fit <- fitInfo[[as.character(co)]]
+    if (is.null(fit)){
+      next
+    }
+    if(length(fit$segs[[1]])<5){
+      next
+    }
     # Here the case of n=2 (only 1 non-baseline sample) has to be handled separately if bootstrapping is to be used
     # Otherwise run standard procedure
     if (nCol==1 & bootstrapSingleSamp){
-        ratiosVec <- c()
-        for (co in seq(0.1, 0.25, by=0.025)){
-            fit <- fitInfo[[as.character(co)]]
-            if (is.null(fit)){
-                next
-            }
-            if(length(fit$segs[[1]])<8){
-                next
-            }
-            ratiosVec <- c(ratiosVec, bootstrapSegmentsAndEstimateR(seg.rel, fit))
-        }
+        ratiosVec <- bootstrapSegmentsAndEstimateR(seg.rel, fit, 50)
         final.medians <- data.frame(time=names(seg.rel.nonBase), relratio=1, reltrue=1,
                                     rat=mean(ratiosVec, na.rm=T), rat_sd=sd(ratiosVec, na.rm=T))
         topSample <- names(seg.rel.nonBase)[1]
     }else{
-
-        # Identify optimal cutoff for clonal segments and compute relative resistant ratios
-        # from the corresponding order and subclonal segments 
-        # Number of non-clonal segments to be retained: >=12 ; only proceed if a minimum of 5 subclonal segments are found
-        segAim <- 12
-        co <- getCutOffAuto(fitInfo.df, segAim)
-        fit <- fitInfo[[as.character(co)]]
-        if (is.null(fit)){
-          next
-        }
-        if(length(fit$segs[[1]])<5){
-          next
-        }
         ordInd <- 1
         seg.rel.toUse <- seg.rel[fit$segs[[ordInd]],fit$ord[ordInd,], drop=F]
         topSample <- names(seg.rel.toUse)[1]
@@ -146,8 +135,6 @@ for (noiseLevel in c(0.5, 1, 2, 4)){
     final.medians$ratBase <- params.df[params.df$time=='X1','ratio']/100
     final.medians$simInd <- simInd
     final.medians$sigma <- noiseLevel
-    final.medians$segAim <- segAim
-    final.medians$segNum <- nrow(seg.rel.toUse)
     final.medians$sampNum <- ncol(seg.av.corr)
     ratHat.total <- rbind(ratHat.total, final.medians)
     simInd = simInd + 1
