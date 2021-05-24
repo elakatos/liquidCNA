@@ -27,3 +27,4 @@ The files in the repository are organised as follows:
 **May 2021**
 
 Special cases and functions added for the n=2 (single non-baseline sample) case. This includes (1) updated estimation functions so dataframe operations do not throw errors and (2) a special bootstrapping function that allows random subsampling of subclonal samples prior to subclonal ratio estimation - to rectify that in n=2 unstable and subclonal segments are indistinguishable.
+Therefore prediction is now possible for a single non-baseline sample, but simulation on synthetic data show that the accuracy is lower and we would advise against.
