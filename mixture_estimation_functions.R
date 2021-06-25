@@ -163,9 +163,9 @@ getCutOffAuto <- function(fitInfo.df, minNum){
 # Input:
 # - seg.rel = DeltaCN values to be used
 # - fit = the fit for a given cutoff value, containing all non-clonal segments and subclonal ordered segments (same for n=2)
-# Returns: cutoff value meeting requirement and maximising the fit
+# Returns: vector of esitmates of r
 bootstrapSegmentsAndEstimateR <- function(seg.rel, fit, iterNum=25){
-    ordInd <- 1 # only a single ordering is possible in n=2 case
+    ordInd <- 1 # in n=2 only this is possible
     ratVec <- c()
     for ( i in 1:iterNum){
       seg.selected <- sample(fit$segs[[ordInd]], round(length(fit$segs[[ordInd]])*0.75))
@@ -181,6 +181,58 @@ bootstrapSegmentsAndEstimateR <- function(seg.rel, fit, iterNum=25){
       ratVec <- c(ratVec, final.medians$rat)
   }
   return(ratVec)
+}
+
+# Bootstrap the estimate of r annd subclonal segments by subsampling segments and carrying out estimates on this subset
+# This function is for n>2 cases where subclonal segments are also always newly evaluated within the bootstrapping
+# Input:
+# - seg.rel = DeltaCN values to be used
+# - seg.rel.toOrder = subset of DeltaCN values to be used in determining subclonal segments
+# - ordVec = all permutations of the samples to be evaluated for best ordering
+# - cutOff = cutOff value to use in separating non-clonal segments
+# Optional inputs: iterNum (number of bootstrapping iterations); inputs for subclonal segment/ordering fitting
+# Returns: a dataframe of estimates of r, with columns time (sample names) and rat (subclonal-ratio estimate)
+bootstrapSegmentsAndEstimateSubclonalAndR <- function(seg.rel, seg.rel.toOrder, ordVec, cutOff, iterNum=25, subclonalArgs=NA, gaussArgs=NA){
+    # define default parameters and overwrite them in case they are supplied
+    filterMethod <- 'sd'
+    epsilon <- 0.05
+    if (!is.na(subclonalArgs)){
+      filterMethod <- subclonalArgs[['filterMethod']]
+      epsilon <- subclonalArgs[['epsilon']]
+    }
+    gaussSigma <- 0.1
+    lambdaOverwrite <- 0.2
+    if (!is.na(gaussArgs)){
+      gaussSigma <- gaussArgs[['gaussSigma']]
+      lambdaOverwrite <- gaussArgs[['lambdaOverwrite']]
+    }
+
+    nCol = ncol(seg.rel.toOrder)
+    ordInd <- 1 # use this default value
+    
+    ratVec.df <- data.frame(matrix(vector(), ncol=3))
+    for ( i in 1:iterNum){
+      seg.selected <- sample(row.names(seg.rel.toOrder), round(nrow(seg.rel.toOrder)*0.75))
+      # determine subclonal segments and order (stored in fit) from the subset of segments and pre-defined cutoff value
+      seg.rel.toOrderSampled <- seg.rel.toOrder[seg.selected,]
+      seg.rel.Eval <- filterSegmentRatios(seg.rel.toOrderSampled, cutOff, filterMethod, 0)
+      best <- findBestOrder(seg.rel.Eval, ordVec, epsilon, nCol, 0)
+      fit <- best
+      # determine the subclonal ratio using Gauissian fitting on the subclonal segments
+      if (length(fit$segs[[ordInd]])==0){
+        next
+      }
+      seg.rel.toUse <- seg.rel[fit$segs[[ordInd]],fit$ord[ordInd,], drop=F]
+      final.medians <- data.frame(time=names(seg.rel.toUse),rat=NA, rat_sd=NA)
+      tryCatch(
+        for (topSample in final.medians$time){
+          final.medians <- estimateRGaussianFit(seg.rel.toUse, topSample, final.medians, gaussSigma=gaussSigma, lambdaOverwrite=lambdaOverwrite)
+          },
+          error=function(e){print('Error in Gaussian fitting, continuing.')}
+          )
+      ratVec.df <- rbind(ratVec.df, final.medians[,c('time','rat')])
+  }
+  return(ratVec.df)
 }
 
 # Estimate (subclonal) ratio using the level of CNA as compared to a selected "high" sample
@@ -211,27 +263,29 @@ estimateRSegmentRatio <- function(seg.ratios, toEstimate, topSamples, w){
 # - final.medians = output data frame with column "time' denoting the sample and "rat" denoting the estimated ratio and "rat_sd" its variance
 # - (optional) nStates = number of DeltaCN states presented in the data, e.g. DCN={-1,1,2} -> nStates=3; this is used to compute the variance of the estimate
 # Returns: updated final.medians containing values for ratio and variance of the estimate
-estimateRGaussianFit <- function(seg.rel.toUse, topSample, final.medians, nStates=2){
+estimateRGaussianFit <- function(seg.rel.toUse, topSample, final.medians, gaussSigma=0.1, nStates=2, lambdaOverwrite=0.2, verbose=F){
     seg.top <- seg.rel.toUse[,topSample]
     start <- mean(seg.top[seg.top<0])
     if (is.nan(start)){
         # estimate the initial value for fitting from segments with DCN between 0 and 1
       start <- -1* mean(seg.top[seg.top>0 & seg.top<1])
   }
-  if (is.nan(start)){ # if no starting point can be found, start from a default of 40%
-      start <- -0.4
+  if (is.nan(start)){ # if no starting point can be found, start from a default of 25%
+      start <- -0.25
   }
   # By default the following DCN values are used: -2, -1, 1, 2, 3
   mixfit <- normalmixEM(as.numeric(seg.top),
-                        lambda=0.2,
+                        lambda=lambdaOverwrite,
                         mean.constr = c("2a","a","-a","-2a","-3a"),
-                        mu=c(2,1,-1,-2,-3)*start,sigma=0.1)
-  #print(mixfit$mu)
+                        mu=c(2,1,-1,-2,-3)*start,sigma=gaussSigma)
   # only return the obtained value if converged in less than 800 iterations
   if (length(mixfit$all.loglik)<800){
       final.medians$rat[final.medians$time==topSample] <- -1*(mixfit$mu[2])
       #sigma depends on the number of segments used and that depends on how many states they were distributed across
       final.medians$rat_sd[final.medians$time==topSample] <- (mixfit$sigma[1])/sqrt(nrow(seg.rel.toUse)/nStates)
+  }
+  if (verbose){
+  	print(mixfit$lambda)
   }
   return(final.medians)
 }
@@ -315,7 +369,7 @@ getOrderSynthetic <- function(seg.rel.nonBase){
 
     # set the method by default to sd and epsilon to 0.05, as optimal for synthetic data
     filterMethod <- 'sd'
-    cutOffVec <- seq(0.05,0.35,by=0.005)
+    cutOffVec <- seq(0.025,0.35,by=0.005)
     epsilon <- 0.05
 
     # for each cutoff value, evaluate clonal/subclonal/unstable segments and best order
